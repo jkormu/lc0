@@ -434,12 +434,14 @@ void Search::MaybeTriggerStop() {
     if (only_one_possible_move_left_) {
       FireStopInternal();
       LOGFILE << "Stopped search: Only one move candidate left.";
+      WriteGMLTree(root_node_, !played_history_.IsBlackToMove());
     }
     // Stop if reached playouts limit.
     if (limits_.playouts >= 0 && total_playouts_ >= limits_.playouts) {
       FireStopInternal();
       LOGFILE << "Stopped search: Reached playouts limit: " << total_playouts_
               << ">=" << limits_.playouts;
+      WriteGMLTree(root_node_, !played_history_.IsBlackToMove());
     }
     // Stop if reached visits limit.
     if (limits_.visits >= 0 &&
@@ -453,6 +455,7 @@ void Search::MaybeTriggerStop() {
     if (limits_.search_deadline && GetTimeToDeadline() <= 0) {
       LOGFILE << "Stopped search: Ran out of time.";
       FireStopInternal();
+      WriteGMLTree(root_node_, !played_history_.IsBlackToMove());
     }
     // Stop if average depth reached requested depth.
     if (limits_.depth >= 0 &&
@@ -460,6 +463,7 @@ void Search::MaybeTriggerStop() {
             static_cast<unsigned int>(limits_.depth)) {
       FireStopInternal();
       LOGFILE << "Stopped search: Reached depth.";
+      WriteGMLTree(root_node_, !played_history_.IsBlackToMove());
     }
   }
   // If we are the first to see that stop is needed.
