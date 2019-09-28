@@ -352,6 +352,69 @@ void Search::UpdateKLDGain() {
   }
 }
 
+void WriteGMLNode(int id, std::string move_string, std::string N_string, std::string Q_string, std::string D_string, std::string P_string, std::ofstream& file){
+ std::string quot = "\"";
+ file << "node" << std::endl;
+ file << "[" << std::endl;
+ file << "id " + std::to_string(id) << std::endl;
+ file << "move " + quot + move_string + quot << std::endl;
+ file << "N " + quot + N_string + quot << std::endl;
+ file << "Q " + quot + Q_string + quot << std::endl;
+ file << "D " + quot + D_string + quot << std::endl;
+ file << "P " + quot + P_string + quot << std::endl;
+ file << "]" << std::endl;
+}
+
+void WriteGMLEdge(int id_parent, int id, std::ofstream& file){
+ file << "edge" << std::endl;
+ file << "[" << std::endl;
+ file << "source " + std::to_string(id_parent) << std::endl;
+ file << "target " + std::to_string(id) << std::endl;
+ file << "]" << std::endl;
+}
+
+void RecursiveGMLWrite(Node* node, std::ofstream& file, bool flip, int *id, int parent_id){
+    std::string move_string = "";
+    std::string N_string = "";
+    std::string Q_string = "";
+    std::string D_string = "";
+    std::string P_string = "";
+    Node* n = nullptr;
+    //for non-root nodes write the corresponding edge (from parent to this node) to file
+    if (node->GetParent() != nullptr and node->GetParent()->GetN() > 0){
+        move_string =  node->GetOwnEdge()->GetMove(flip).as_string();
+        P_string = std::to_string(node->GetOwnEdge()->GetP());
+        WriteGMLEdge(parent_id, *id, file);
+        }
+    N_string = std::to_string(node->GetN());
+    Q_string = std::to_string(node->GetQ());
+    D_string = std::to_string(node->GetD());
+    WriteGMLNode(*id, move_string, N_string, Q_string, D_string, P_string, file);
+    parent_id = *id;
+    *id = *id + 1;
+    flip = !flip;
+    for (const auto& child : node->Edges()) {
+        n = child.node();
+        if (n != nullptr){
+            RecursiveGMLWrite(n, file, flip, id, parent_id);
+        }
+    }
+}
+
+void WriteGMLTree(Node* root_node, bool black_play){
+    std::ofstream file;
+    file.open("tree.gml");
+    file << "graph" << std::endl;
+    file << "[" << std::endl;
+    file << "directed 1" << std::endl;
+    bool flip = black_play;
+    int parent_id = 0;
+    int id = 0;
+    RecursiveGMLWrite(root_node, file, flip, &id, parent_id);
+    file << "]" << std::endl;
+    file.close();
+}
+
 void Search::MaybeTriggerStop() {
   SharedMutex::Lock nodes_lock(nodes_mutex_);
   Mutex::Lock lock(counters_mutex_);
@@ -365,17 +428,20 @@ void Search::MaybeTriggerStop() {
     if (kldgain_too_small_) {
       FireStopInternal();
       LOGFILE << "Stopped search: KLDGain per node too small.";
+      WriteGMLTree(root_node_, !played_history_.IsBlackToMove());
     }
     // If smart pruning tells to stop (best move found), stop.
     if (only_one_possible_move_left_) {
       FireStopInternal();
       LOGFILE << "Stopped search: Only one move candidate left.";
+      WriteGMLTree(root_node_, !played_history_.IsBlackToMove());
     }
     // Stop if reached playouts limit.
     if (limits_.playouts >= 0 && total_playouts_ >= limits_.playouts) {
       FireStopInternal();
       LOGFILE << "Stopped search: Reached playouts limit: " << total_playouts_
               << ">=" << limits_.playouts;
+      WriteGMLTree(root_node_, !played_history_.IsBlackToMove());
     }
     // Stop if reached visits limit.
     if (limits_.visits >= 0 &&
@@ -383,11 +449,13 @@ void Search::MaybeTriggerStop() {
       FireStopInternal();
       LOGFILE << "Stopped search: Reached visits limit: "
               << total_playouts_ + initial_visits_ << ">=" << limits_.visits;
+      WriteGMLTree(root_node_, !played_history_.IsBlackToMove());
     }
     // Stop if reached time limit.
     if (limits_.search_deadline && GetTimeToDeadline() <= 0) {
       LOGFILE << "Stopped search: Ran out of time.";
       FireStopInternal();
+      WriteGMLTree(root_node_, !played_history_.IsBlackToMove());
     }
     // Stop if average depth reached requested depth.
     if (limits_.depth >= 0 &&
@@ -395,6 +463,7 @@ void Search::MaybeTriggerStop() {
             static_cast<unsigned int>(limits_.depth)) {
       FireStopInternal();
       LOGFILE << "Stopped search: Reached depth.";
+      WriteGMLTree(root_node_, !played_history_.IsBlackToMove());
     }
   }
   // If we are the first to see that stop is needed.
