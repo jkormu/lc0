@@ -351,6 +351,69 @@ NNCacheLock Search::GetCachedNNEval(Node* node) const {
   return nneval;
 }
 
+void WriteGMLNode(int id, std::string move_string, std::string N_string, std::string Q_string, std::string D_string, std::string P_string, std::ofstream& file){
+ std::string quot = "\"";
+ file << "node" << std::endl;
+ file << "[" << std::endl;
+ file << "id " + std::to_string(id) << std::endl;
+ file << "move " + quot + move_string + quot << std::endl;
+ file << "N " + quot + N_string + quot << std::endl;
+ file << "Q " + quot + Q_string + quot << std::endl;
+ file << "D " + quot + D_string + quot << std::endl;
+ file << "P " + quot + P_string + quot << std::endl;
+ file << "]" << std::endl;
+}
+
+void WriteGMLEdge(int id_parent, int id, std::ofstream& file){
+ file << "edge" << std::endl;
+ file << "[" << std::endl;
+ file << "source " + std::to_string(id_parent) << std::endl;
+ file << "target " + std::to_string(id) << std::endl;
+ file << "]" << std::endl;
+}
+
+void RecursiveGMLWrite(Node* node, std::ofstream& file, bool flip, int *id, int parent_id){
+    std::string move_string = "";
+    std::string N_string = "";
+    std::string Q_string = "";
+    std::string D_string = "";
+    std::string P_string = "";
+    Node* n = nullptr;
+    //for non-root nodes write the corresponding edge (from parent to this node) to file
+    if (node->GetParent() != nullptr and node->GetParent()->GetN() > 0){
+        move_string =  node->GetOwnEdge()->GetMove(flip).as_string();
+        P_string = std::to_string(node->GetOwnEdge()->GetP());
+        WriteGMLEdge(parent_id, *id, file);
+        }
+    N_string = std::to_string(node->GetN());
+    Q_string = std::to_string(node->GetQ(0.0)); //TODO: add support for draw_score, currently assumed 0.0
+    D_string = std::to_string(node->GetD());
+    WriteGMLNode(*id, move_string, N_string, Q_string, D_string, P_string, file);
+    parent_id = *id;
+    *id = *id + 1;
+    flip = !flip;
+    for (const auto& child : node->Edges()) {
+        n = child.node();
+        if (n != nullptr){
+            RecursiveGMLWrite(n, file, flip, id, parent_id);
+        }
+    }
+}
+
+void WriteGMLTree(Node* root_node, bool black_play){
+    std::ofstream file;
+    file.open("tree.gml");
+    file << "graph" << std::endl;
+    file << "[" << std::endl;
+    file << "directed 1" << std::endl;
+    bool flip = black_play;
+    int parent_id = 0;
+    int id = 0;
+    RecursiveGMLWrite(root_node, file, flip, &id, parent_id);
+    file << "]" << std::endl;
+    file.close();
+}
+
 void Search::MaybeTriggerStop(const IterationStats& stats,
                               StoppersHints* hints) {
   hints->Reset();
@@ -368,6 +431,7 @@ void Search::MaybeTriggerStop(const IterationStats& stats,
   // If we are the first to see that stop is needed.
   if (stop_.load(std::memory_order_acquire) && ok_to_respond_bestmove_ &&
       !bestmove_is_sent_) {
+    WriteGMLTree(root_node_, !played_history_.IsBlackToMove());
     SendUciInfo();
     EnsureBestMoveKnown();
     SendMovesStats();
