@@ -30,6 +30,7 @@
 #include <chrono>
 #include <memory>
 #include <vector>
+
 #include "chess/uciloop.h"
 #include "utils/optionsdict.h"
 
@@ -41,6 +42,7 @@ struct IterationStats {
   int64_t time_since_movestart = 0;
   int64_t total_nodes = 0;
   int64_t nodes_since_movestart = 0;
+  int64_t batches_since_movestart = 0;
   int average_depth = 0;
   std::vector<uint32_t> edge_n;
 };
@@ -86,10 +88,8 @@ class SearchStopper {
 class TimeManager {
  public:
   virtual ~TimeManager() = default;
-  virtual void ResetGame() = 0;
   virtual std::unique_ptr<SearchStopper> GetStopper(
-      const OptionsDict& options, const GoParams& params,
-      const Position& position) = 0;
+      const GoParams& params, const Position& position) = 0;
 };
 
 }  // namespace lczero

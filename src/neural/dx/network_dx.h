@@ -27,6 +27,7 @@
 #pragma once
 
 #include "dx_common.h"
+#include "layers_dx.h"
 #include "neural/factory.h"
 #include "neural/network_legacy.h"
 
@@ -34,44 +35,51 @@
 // backend into some base class(es).
 
 namespace lczero {
+namespace dx_backend {
 
-using namespace dx_backend;
 class DxNetwork;
 
 static constexpr int kNumOutputPolicy = 1858;
 
-// Padding needed because on some HW (e.g: NV) fp16 requires gemm matrix dimensions
-// to be multiples of 8
+// Padding needed because on some HW (e.g: NV) fp16 requires gemm matrix
+// dimensions to be multiples of 8
 static constexpr int kNumOutputPolicyPadded8 =
     ((kNumOutputPolicy - 1) / 8 + 1) * 8;
 
 // Normally 3 when using wdl, and 1 without
 static constexpr int kNumOutputValuePadded8 = 8;
 
+static constexpr int kNumOutputMovesLeftPadded8 = 8;
+
 struct InputsOutputsDx {
   InputsOutputsDx(int maxBatchSize, DxContext* dx_context, bool wdl,
-                  bool conv_policy, bool fp16);
+                  bool moves_left, bool conv_policy, bool fp16);
   ~InputsOutputsDx();
 
-  // Wanted to put these in default heap (video memory, mapped to support CPU writes too).
+  // Wanted to put these in default heap (video memory, mapped to support CPU
+  // writes too).
   //  - but this isn't supported by DX12 API!
-  // So right now we have it in upload ueap (system memory mapped for both CPU and GPU).
+  // So right now we have it in upload ueap (system memory mapped for both CPU
+  // and GPU).
   DXAlloc input_masks_mem_gpu_;
   DXAlloc input_val_mem_gpu_;
 
   // In readback heap (system memory mapped for both CPU and GPU).
   DXAlloc op_policy_mem_gpu_;
   DXAlloc op_value_mem_gpu_;
+  DXAlloc op_moves_left_mem_gpu_;
 
   // CPU pointers of the above allocations.
   uint64_t* input_masks_mem_;
   float* input_val_mem_;
   float* op_policy_mem_;
   float* op_value_mem_;
+  float* op_moves_left_mem_;
 
   // Separate copy, un-padded and always in fp32
   float* op_policy_mem_final_;
   float* op_value_mem_final_;
+  float* op_moves_left_mem_final_;
 
   // For recording GPU commands.
   ID3D12GraphicsCommandList4* command_list_;
@@ -81,11 +89,12 @@ struct InputsOutputsDx {
   bool needs_reset_;
 
   const bool uses_policy_map_;
+  const bool moves_left_;
 };
 
 class DxNetworkComputation : public NetworkComputation {
  public:
-  DxNetworkComputation(DxNetwork* network, bool wdl);
+  DxNetworkComputation(DxNetwork* network, bool wdl, bool moves_left);
   ~DxNetworkComputation();
 
   void AddInput(InputPlanes&& input) override;
@@ -118,11 +127,19 @@ class DxNetworkComputation : public NetworkComputation {
         ->op_policy_mem_final_[sample * kNumOutputPolicy + move_id];
   }
 
+  float GetMVal(int sample) const override {
+    if (moves_left_) {
+      return inputs_outputs_->op_moves_left_mem_final_[sample];
+    }
+    return 0.0f;
+  }
+
  private:
   // Memory holding inputs, outputs.
   std::unique_ptr<InputsOutputsDx> inputs_outputs_;
   int batch_size_;
   bool wdl_;
+  bool moves_left_;
 
   DxNetwork* network_;
 };
@@ -164,7 +181,7 @@ class DxContext {
   void CreateAlloc(size_t size, D3D12_HEAP_TYPE type, DXAlloc& alloc,
                    bool fp16);
   void UavBarrier(ID3D12GraphicsCommandList4* cl = nullptr);
-  uint64_t FlushCL(ID3D12GraphicsCommandList4 *cl = nullptr);
+  uint64_t FlushCL(ID3D12GraphicsCommandList4* cl = nullptr);
   void WaitForGpu(uint64_t fence_val = 0);
   void ResetCL(ID3D12GraphicsCommandList4* cl = nullptr,
                ID3D12CommandAllocator* ca = nullptr, bool reset = true);
@@ -210,6 +227,7 @@ class DxNetwork : public Network {
   bool has_wdl_;
   bool has_conv_policy_;
   bool fp16_;
+  bool moves_left_;
 
   std::vector<std::unique_ptr<BaseLayer>> network_;
   BaseLayer* getLastLayer() { return network_.back().get(); }
@@ -235,4 +253,5 @@ class DxNetwork : public Network {
   std::list<std::unique_ptr<InputsOutputsDx>> free_inputs_outputs_;
 };
 
-};  // namespace lczero
+}  // namespace dx_backend
+}  // namespace lczero

@@ -67,6 +67,8 @@ struct ThinkingInfo {
   int nps = -1;
   // Hash fullness * 1000
   int hashfull = -1;
+  // Moves to mate.
+  std::optional<int> mate;
   // Win in centipawns.
   std::optional<int> score;
   // Win/Draw/Lose probability * 1000.
@@ -100,6 +102,8 @@ struct GameInfo {
   GameResult game_result = GameResult::UNDECIDED;
   // Name of the file with training data.
   std::string training_filename;
+  // Initial fen of the game.
+  std::string initial_fen;
   // Game moves.
   std::vector<Move> moves;
   // Ply within moves that the game actually started.
